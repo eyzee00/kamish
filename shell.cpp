@@ -1,6 +1,7 @@
 #include "shell.hpp"
+#include "command.hpp"
 
-Shell::Shell(char **environPtr) : environ(environPtr), isRunning(false){
+Shell::Shell(char **environPtr) : environ(environPtr){
 
 }
 
@@ -26,12 +27,13 @@ void Shell::run() {
         if (tokenizedLine.empty())
             continue;
         // Handle the built-in "exit" and stop the shell from running, we can just break here but what the hell
-        if (!tokenizedLine.empty() && tokenizedLine[0] == "exit") {
+        if (tokenizedLine[0] == "exit") {
             this->isRunning = false;
             continue;
         }
         // Relegate executing commands to the execute command function using the tokenized list of arguments
-        executeCommand(tokenizedLine);
+        simpleCommand current(tokenizedLine); 
+        current.execute(environ);
     }
 }
 
