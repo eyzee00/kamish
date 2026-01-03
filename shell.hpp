@@ -7,6 +7,7 @@
 #include <unistd.h>
 #include <sstream>
 #include <sys/wait.h>
+#include "command.hpp"
 
 class Shell {
     private:
