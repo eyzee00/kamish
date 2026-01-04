@@ -1,8 +1,41 @@
 #include "shell.hpp"
 #include "command.hpp"
+#include <limits.h> // For PATH_MAX
 
 Shell::Shell(char **environPtr) : environ(environPtr){
 
+}
+
+
+std::string Shell::getPrompt() {
+    char cwd[PATH_MAX];
+    
+    // 1. Get current working directory
+
+    if (getcwd(cwd, sizeof(cwd)) != nullptr) {
+        std::string path(cwd);
+        
+        // 2. Shorten Home Directory to "~"
+        // (Optional polish: makes the prompt look cleaner)
+        const char* home = getenv("HOME");
+        if (home) {
+            std::string homeDir(home);
+            if (path.find(homeDir) == 0) {
+                path.replace(0, homeDir.length(), "~");
+            }
+
+        }
+
+        // 3. Build the fancy string
+        // Format: [BOLD Path] [RED Signature]$ 
+        return std::string(PROMPT_RED) + path + " " + 
+
+               std::string(PROMPT_RESET) + "$: ";
+    }
+
+    
+    // Fallback if getcwd fails
+    return "kamish$ ";
 }
 
 void Shell::run() {
@@ -10,7 +43,8 @@ void Shell::run() {
 
     // The shell's main loop, will run until ctrl + D is pressed or if the user types the built-in "exit"
     while (this->isRunning) {
-        char *cInput = readline("kamish$: ");
+        std::string prompt = this->getPrompt();
+        char *cInput = readline(prompt.c_str());
 
         if (!cInput) {
             std::cout << "Terminated" << std::endl;
