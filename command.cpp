@@ -1,6 +1,7 @@
 #include "command.hpp"
-#include <cstdlib>
 
+
+/*----------------Abstract Command Class-------------------------------*/
 /*
  * getAbsolutePath - Gets the full path of a given executable if found
  * If not found it returns the given executable name
@@ -34,6 +35,9 @@ std::string Command::getAbsolutePath(const std::string &executableName) {
     // If we reach this statement, the executable doesn't exist in none of the default PATH directories
     return executableName;
 }
+
+
+/*----------------simpleCommand Class-------------------------------*/
 
 simpleCommand::simpleCommand(const std::vector<std::string> &arguments) : argumentList(arguments) {
 
@@ -90,4 +94,26 @@ int simpleCommand::execute(char **environ) {
             return -1;
         }
     }
+}
+
+/*----------------andCommand Class-------------------------------*/
+andCommand::andCommand(std::unique_ptr<Command> leftCommand, std::unique_ptr<Command> rightCommand) 
+    : leftChild(std::move(leftCommand)), rightChild(std::move(rightCommand)) {
+
+}
+/*
+ * andCommand execute function
+ * Makes use of the power of both unique_ptr and the polymorphic execute function
+ * execute can trigger twice or more depending on the children, what matters is that the execute function is smart enough to tell
+ */
+int andCommand::execute(char **environPtr) {
+    // Store the status of the first child execution
+    int status = this->leftChild->execute(environPtr);
+
+    // Execute the right child only if the left has succeded
+    if (status == 0)
+        status = this->rightChild->execute(environPtr);
+    
+    // Will return the second child's status if both have executed, if the first child failed, it will return its status instead
+    return status;
 }
