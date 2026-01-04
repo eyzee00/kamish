@@ -123,10 +123,31 @@ std::unique_ptr<Command> Shell::commandParser(std::string input) {
     }
 
     // This is the interesting part, stay with me now
-    // If we find "&&", this means we have a composite command on our hands
+    // If we find ";", this means we have a composite command on our hands
+    size_t colonPos = trimmedInput.find(";");
+    if (colonPos != std::string::npos) {
+        // We divide the input into left of the ";" and the right of it using substr() and andPos
+        std::string leftString = trimmedInput.substr(0, colonPos);
+        std::string rightString = trimmedInput.substr(colonPos + 1);
+
+        // We call the function recursively on the left and right children
+        // This is the part where each individual command is built, each call keeps dividing the input into two
+        // Until we are left with and elementary command
+        std::unique_ptr<Command> leftCommand = commandParser(leftString);
+        std::unique_ptr<Command> rightCommand = commandParser(rightString);
+
+        // Allocate memory on the heap for an sequenceCommand object, use move semantics to move ownership from the left/rightCommand to the constructor
+        // The constructor in turn moves the ownership from itself to the instance private members
+        sequenceCommand *rawSequencePtr = new sequenceCommand(std::move(leftCommand), std::move(rightCommand));
+        std::unique_ptr<Command> genericCmdPtr(rawSequencePtr);
+
+        return genericCmdPtr;
+    }
+
+    // If we find "&&", this means we have an AND command on our hands
     size_t andPos = trimmedInput.find("&&");
     if (andPos != std::string::npos) {
-        //We divide the input into left of the "&&" and the right of it using substr() and andPos
+        // We divide the input into left of the "&&" and the right of it using substr() and andPos
         std::string leftString = trimmedInput.substr(0, andPos);
         std::string rightString = trimmedInput.substr(andPos + 2);
 
@@ -146,8 +167,31 @@ std::unique_ptr<Command> Shell::commandParser(std::string input) {
         
         return genericCmdPtr;
     }
+    
+    // If we find "||", this means we have an OR command on our hands
+    size_t orPos = trimmedInput.find("||");
+    if (orPos != std::string::npos) {
+        // We divide the input into left of the "||" and the right of it using substr() and andPos
+        std::string leftString = trimmedInput.substr(0, orPos);
+        std::string rightString = trimmedInput.substr(orPos + 2);
+        
+        // We call the function recursively on the left and right children
+        // This is the part where each individual command is built, each call keeps dividing the input into two
+        // Until we are left with and elementary command
+        std::unique_ptr<Command> leftCommand = commandParser(leftString);
+        std::unique_ptr<Command> rightCommand = commandParser(rightString);
 
-    // If we find "|", this means we have a composite command on our hands
+        // Allocate memory on the heap for an orCommand object, use move semantics to move ownership from the left/rightCommand to the constructor
+        // The constructor in turn moves the ownership from itself to the instance private members
+        orCommand *rawOrPtr = new orCommand(std::move(leftCommand), std::move(rightCommand));
+
+        // Wrap the created object by a generic command unique pointer to delegate memory management
+        // And also makes use of the abstract Command class, makes working with different types of commands extremely easier
+        std::unique_ptr<Command> genericCmdPtr(rawOrPtr);
+        return genericCmdPtr;
+    }
+
+    // If we find "|", this means we have a pipe command on our hands
     size_t pipePos = trimmedInput.find("|");
     if (pipePos != std::string::npos) {
         // We divide the input into left of the "|" and the right of it using substr() and andPos
@@ -170,6 +214,68 @@ std::unique_ptr<Command> Shell::commandParser(std::string input) {
 
         return genericCmdPtr;
     }
+
+    // If we find ">>", this means we have a redirect and append command on our hands
+    size_t appendPos = trimmedInput.find(">>");
+    if (appendPos != std::string::npos) {
+        // We divide the input into left of the "|" and the right of it using substr() and andPos
+        std::string leftString = trimmedInput.substr(0, appendPos);
+        std::string fileName = trimmedInput.substr(appendPos + 2);
+
+        std::unique_ptr<Command> resultingCommand = commandParser(leftString);
+        fileName = this->trimInput(fileName);
+
+        // Allocate memory on the heap for a redirectCommand object, use move semantics to move ownership from the left/rightCommand to the constructor
+        // The constructor in turn moves the ownership from itself to the instance private members
+        redirectCommand *rawRedirectPtr = new redirectCommand(std::move(resultingCommand), fileName, "append");
+
+        // Wrap the created object by a generic command unique pointer to delegate memory management
+        // And also makes use of the abstract Command class, makes working with different types of commands extremely easier
+        std::unique_ptr<Command> genericCmdPtr(rawRedirectPtr);
+        return genericCmdPtr;
+    }
+    
+
+    // If we find ">", this means we have a redirect and truncate command on our hands
+    size_t truncPos = trimmedInput.find(">");
+    if (truncPos != std::string::npos) {
+        // We divide the input into left of the ">" and the right of it using substr() and andPos
+        std::string leftString = trimmedInput.substr(0, truncPos);
+        std::string fileName = trimmedInput.substr(truncPos + 1);
+
+        fileName = this->trimInput(fileName);
+        std::unique_ptr<Command> resultingCommand = commandParser(leftString);
+
+        // Allocate memory on the heap for a redirectCommand object, use move semantics to move ownership from the left/rightCommand to the constructor
+        // The constructor in turn moves the ownership from itself to the instance private members
+        redirectCommand *rawRedirectPtr = new redirectCommand(std::move(resultingCommand), fileName, "trunc");
+
+        // Wrap the created object by a generic command unique pointer to delegate memory management
+        // And also makes use of the abstract Command class, makes working with different types of commands extremely easier
+        std::unique_ptr<Command> genericCmdPtr(rawRedirectPtr);
+        return genericCmdPtr;
+    }
+    
+    // If we find "<", this means we have a redirect and read command on our hands
+    size_t readPos = trimmedInput.find("<");
+    if (readPos != std::string::npos) {
+        // We divide the input into left of the "<" and the right of it using substr() and andPos
+        std::string leftString = trimmedInput.substr(0, readPos);
+        std::string fileName = trimmedInput.substr(readPos + 1);
+
+        fileName = this->trimInput(fileName);
+        std::unique_ptr<Command> resultingCommand = commandParser(leftString);
+
+        // Allocate memory on the heap for a redirectCommand object, use move semantics to move ownership from the left/rightCommand to the constructor
+        // The constructor in turn moves the ownership from itself to the instance private members
+        redirectCommand *rawRedirectPtr = new redirectCommand(std::move(resultingCommand), fileName, "read");
+
+        // Wrap the created object by a generic command unique pointer to delegate memory management
+        // And also makes use of the abstract Command class, makes working with different types of commands extremely easier
+        std::unique_ptr<Command> genericCmdPtr(rawRedirectPtr);
+        return genericCmdPtr;
+    }
+
     else {
         // This is our base case, each recursive call leads to this
         // We build a simple command from the tokenized input
