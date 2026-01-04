@@ -30,6 +30,12 @@ void Shell::run() {
 
         int status = currentCommand->execute(this->environ);
     }
+
+    clear_history();
+    #if defined(HAVE_READLINE) || defined (__linux__)
+    rl_clear_history();
+    rl_free_undo_list();
+    #endif
 }
 std::vector<std::string> Shell::tokenize(const std::string &input) {
     std::vector<std::string> tokens;
