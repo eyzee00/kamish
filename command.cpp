@@ -44,6 +44,32 @@ simpleCommand::simpleCommand(const std::vector<std::string> &arguments) : argume
 }
 
 int simpleCommand::execute(char **environ, bool shouldFork) {
+
+    if (this->argumentList[0] == "cd") {
+        int result = 0;
+
+        if (this->argumentList.size() == 1) {
+            const char *home = getenv("HOME");
+            if (home) {
+                result = chdir(home);
+            }
+            else {
+                perror("cd: HOME environment variable is not set");
+                return -1;
+            }
+        }
+        else if (this->argumentList.size() == 2) {
+            result = chdir(this->argumentList[1].c_str());
+        }
+        else {
+            perror("cd: Too many Arguments");
+        }
+        if (result) {
+            perror("cd failed: Can't change directory");
+        }
+        return 0;
+    }
+
     // Get the full path for the executable if possible
     this->argumentList[0] = getAbsolutePath(this->argumentList[0]);
     // Create a C style vector since execve() doesn't understand C++ style strings

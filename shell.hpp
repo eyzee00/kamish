@@ -8,6 +8,8 @@
 #include <sstream>
 #include <sys/wait.h>
 #include "command.hpp"
+#include <readline/readline.h>
+#include <readline/history.h>
 
 class Shell {
     private:

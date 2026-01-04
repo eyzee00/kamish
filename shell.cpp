@@ -6,21 +6,25 @@ Shell::Shell(char **environPtr) : environ(environPtr){
 }
 
 void Shell::run() {
-    std::string currentLine;
-    std::vector<std::string> tokenizedLine;
     this->isRunning = true;
 
     // The shell's main loop, will run until ctrl + D is pressed or if the user types the built-in "exit"
     while (this->isRunning) {
-        // If the input is coming from stdin, then display a prompt
-        if (isatty(STDIN_FILENO))
-            std::cout << "$ ";
+        char *cInput = readline("kamish$: ");
 
-        // Read a line from the standard input, if ctrl + D is pressed, break the loop
-        if (!std::getline(std::cin, currentLine))
+        if (!cInput) {
+            std::cout << "Terminated" << std::endl;
             break;
+        }
 
-        std::unique_ptr<Command> currentCommand = this->commandParser(currentLine);
+        std::string input(cInput);
+
+        if (!input.empty()) {
+            add_history(input.c_str());
+        }
+
+        free(cInput);
+        std::unique_ptr<Command> currentCommand = this->commandParser(input);
         if (!this->isRunning || !currentCommand)
             continue;
 
