@@ -6,6 +6,7 @@
 #include <vector>
 #include <unistd.h>
 #include <sys/wait.h>
+#include <memory>
 #include <sstream>
 
 /*
@@ -42,5 +43,23 @@ class simpleCommand : public Command {
         int execute(char **environPtr) override;
         
 };
+
+/*
+ * andCommand - logically connected commands with the "&&" operator
+ */
+class andCommand : public Command {
+    // Each andCommand can have any type of command to its left and to its right
+    // Unique pointers make this significantly easier, now we can delegate the execution to the proper execute() function
+    // Meaning, if the left command is just a simple command, it will run its execute() function
+    private:
+        std::unique_ptr<Command> leftChild;
+        std::unique_ptr<Command> rightChild;
+    
+    // The parser will handle building the commands, and as usual we override the virtual function to adhere to the contract
+    public:
+        andCommand(std::unique_ptr<Command> leftCommand, std::unique_ptr<Command> rightCommand);
+        int execute(char **environPtr) override;
+};
+
 
 #endif
