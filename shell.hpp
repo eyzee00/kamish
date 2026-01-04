@@ -15,8 +15,9 @@ class Shell {
         std::vector<std::string> dirPath;
         char **environ;
         
-        bool fileExists(const std::string &path);
+        std::string trimInput(const std::string &input);
         std::vector<std::string> tokenize(const std::string &input);
+        std::unique_ptr<Command> commandParser(std::string input);
     public:
         Shell(char** environPtr);
         void run();
