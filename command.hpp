@@ -20,7 +20,7 @@ class Command{
         
         // The start of a great inheritence chain, by making this function virtual, we force all the children to implement their own version
         // Which gives us the opportunity to implement different types of commands, e.g. simple commands, logically connected commands...
-        virtual int execute(char **environPtr) = 0;
+        virtual int execute(char **environPtr, bool shouldFork = true) = 0;
     
     // Give all types of commands to resolve the absolute path of a given executable
     protected:
@@ -40,7 +40,7 @@ class simpleCommand : public Command {
     // Define the custom execute function, again, adhering to the contract
     public:
         simpleCommand(const std::vector<std::string> &arguments);
-        int execute(char **environPtr) override;
+        int execute(char **environPtr, bool shouldFork) override;
         
 };
 
@@ -58,7 +58,25 @@ class andCommand : public Command {
     // The parser will handle building the commands, and as usual we override the virtual function to adhere to the contract
     public:
         andCommand(std::unique_ptr<Command> leftCommand, std::unique_ptr<Command> rightCommand);
-        int execute(char **environPtr) override;
+        int execute(char **environPtr, bool shouldFork) override;
+};
+
+/*
+ * pipeCommand - for commands connected with a pipe '|'
+ */
+
+class pipeCommand : public Command {
+    // Each pipeCommand can have any type of command to its left and to its right
+    // Unique pointers make this significantly easier, now we can delegate the execution to the proper execute() function
+    // Meaning, if the left command is an AND command, it will run its execute() function
+    private:
+        std::unique_ptr<Command> leftChild;
+        std::unique_ptr<Command> rightChild;
+
+    // The parser will handle building the commands, and as usual we override the virtual function to adhere to the contract
+    public:
+        pipeCommand(std::unique_ptr<Command> leftCommand, std::unique_ptr<Command> rightCommand);
+        int execute(char **environPtr, bool shouldFork) override;
 };
 
 
