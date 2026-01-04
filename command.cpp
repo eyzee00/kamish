@@ -216,3 +216,94 @@ int pipeCommand::execute(char **environPtr, bool shouldFork) {
         return -1;
     }
 }
+
+/*----------------redirectCommand Class-------------------------------*/
+
+redirectCommand::redirectCommand(std::unique_ptr<Command> givenCommand, const std::string &givenFileName, const std::string &redirectType) 
+    : command(std::move(givenCommand)), fileName(givenFileName), type(redirectType) {
+
+}
+/*
+ * Another tough function to implement
+ * Handles the redirect command type, makes use syscalls like open() and dup2() to overwrite either the standard input or output
+ * This execute version and the simple command's execute are optimized to only fork if needed:
+ * Meaning, that if this function was called by the pipeCommand execute function which already forks, this function catches on
+ * That way, we avoid forking twice for the same command, although it is not that serious, depends on what command we execute
+ */
+int redirectCommand::execute(char **environPtr, bool shouldFork) {
+    // Create a direction flag that tells us if we replace STDIN or STDOUT
+    int fileDescriptor = -1;
+    int direction = -1;
+
+    // Open the file in the corresponding mode depending on the type of the redirect command
+    if (this->type == "trunc") {
+        fileDescriptor = open(this->fileName.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+        direction = 1;
+    }
+    else if(this->type == "append") {
+        fileDescriptor = open(this->fileName.c_str(), O_WRONLY | O_CREAT | O_APPEND, 0644);
+        direction = 1;
+    }
+    else if (this->type == "read") {
+        fileDescriptor = open(this->fileName.c_str(), O_RDONLY, 0644);
+        direction = 0;
+    }
+    else {
+        return -1;
+    }
+
+    // If the file descriptor is still -1, this means opening the file failed
+    if (fileDescriptor == -1) {
+        perror("Error opening the file");
+        return -1;
+    }
+
+    // This is where we use the trick, hang on
+    pid_t childPID;
+    // If shouldFork is true, which is the default, we fork as usual
+    // For example; if this execute function was called in AND execute chain, shouldFork would be true
+    if (shouldFork) {
+        childPID = fork();
+        if (childPID == -1) {
+            perror("Failed to fork");
+            return -1;
+
+        }
+    }
+    // If shouldFork is false, this means we forked elsewhere, and until now, we only for in the simpleCommand and the pipeCommand
+    // This function can't be called by the simpleCommand's execute, since it's a simpleCommand, go figure...
+    // Since pipeCommand's execute() forks for each child
+    // we account for that, and masquerade as the childProcess, since, this is a child process if shouldFork is false
+    else {
+        childPID = 0;
+    }
+
+    // If this is the child...
+    if (!childPID) {
+        // If we need to read from the file, we replace STDIN by the given file
+        if (!direction)
+            dup2(fileDescriptor, STDIN_FILENO);
+        // If we need to write to the file, we replace STDOUT by the given file
+        else
+            dup2(fileDescriptor, STDOUT_FILENO);
+
+        // Close the file since it was already duplicated
+        close(fileDescriptor);
+
+        // Execute the command, and exit with its status
+        exit(this->command->execute(environPtr, false));
+    }
+    
+    // Back to the parent, we close the file, so the child doesn't hang, if its reading
+    close(fileDescriptor);
+    int status = 0;
+    // Only wait if we have forked, if we didn't, another process is waiting, so keep it moving
+    if (shouldFork)
+        waitpid(childPID, &status, 0);
+
+    // Return the exit status if it was successful
+    if (WIFEXITED(status))
+        return WEXITSTATUS(status);
+    else
+        return -1;
+}

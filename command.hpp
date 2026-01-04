@@ -8,6 +8,7 @@
 #include <sys/wait.h>
 #include <memory>
 #include <sstream>
+#include <fcntl.h>
 
 /*
  * Abstract Command class, the contract that each type of command should adhere to
@@ -79,5 +80,18 @@ class pipeCommand : public Command {
         int execute(char **environPtr, bool shouldFork) override;
 };
 
+/*
+ * redirectCommand - for commands connected with a redirect ">>", ">" or "<"
+ */
+class redirectCommand : public Command {
+    private:
+        std::unique_ptr<Command> command;
+        std::string fileName;
+        std::string type;
+
+    public:
+        redirectCommand(std::unique_ptr<Command> givenCommand, const std::string &givenFileName, const std::string &redirectType);
+        int execute(char **environPtr, bool shouldFork) override;
+};
 
 #endif
