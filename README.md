@@ -103,4 +103,4 @@ valgrind --leak-check=full --suppressions=readline.supp ./kamish
 *Note: A suppression file (`readline.supp`) is used to filter out internal one-time allocations from the GNU Readline library.*
 
 ## 📄 License
-This project is open source and available under the [MIT License](LICENSE).
+This project is open source and available under the [GNU GPL v3 License](LICENSE).
