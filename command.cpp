@@ -307,3 +307,33 @@ int redirectCommand::execute(char **environPtr, bool shouldFork) {
     else
         return -1;
 }
+
+/*------------------orCommand Class--------------------*/
+
+orCommand::orCommand(std::unique_ptr<Command> leftCommand, std::unique_ptr<Command> rightCommand) : 
+    leftChild(std::move(leftCommand)), rightChild(std::move(rightCommand)) {
+
+}
+
+int orCommand::execute(char **environ, bool shouldFork) {
+    int status = this->leftChild->execute(environ, true);
+
+    if (status)
+        return this->rightChild->execute(environ, true);
+
+    return status;
+}
+
+
+/*------------------sequenceCommand Class--------------------*/
+
+sequenceCommand::sequenceCommand(std::unique_ptr<Command> leftCommand, std::unique_ptr<Command> rightCommand) :
+    leftChild(std::move(leftCommand)), rightChild(std::move(rightCommand)) {
+
+}
+
+int sequenceCommand::execute(char **environPtr, bool shouldFork) {
+    this->leftChild->execute(environPtr, true);
+
+    return this->rightChild->execute(environPtr, true);
+}

@@ -94,4 +94,30 @@ class redirectCommand : public Command {
         int execute(char **environPtr, bool shouldFork) override;
 };
 
+/*
+ * sequenceCommand - for commands chained by ";"
+ */
+class sequenceCommand : public Command {
+    private:
+        std::unique_ptr<Command> leftChild;
+        std::unique_ptr<Command> rightChild;
+    
+    public:
+        sequenceCommand(std::unique_ptr<Command> leftCommand, std::unique_ptr<Command> rightCommand);
+        int execute(char **environPtr, bool shouldFork) override;
+};
+
+/*
+ * orCommand - for commands connected by the OR symbol "||"
+ */
+class orCommand : public Command {
+    private:
+        std::unique_ptr<Command> leftChild;
+        std::unique_ptr<Command> rightChild;
+
+    public:
+        orCommand(std::unique_ptr<Command> leftCommand, std::unique_ptr<Command> rightCommand);
+        int execute(char **environPtr, bool shouldFork) override;
+};
+
 #endif
