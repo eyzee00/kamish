@@ -43,7 +43,7 @@ simpleCommand::simpleCommand(const std::vector<std::string> &arguments) : argume
 
 }
 
-int simpleCommand::execute(char **environ) {
+int simpleCommand::execute(char **environ, bool shouldFork) {
     // Get the full path for the executable if possible
     this->argumentList[0] = getAbsolutePath(this->argumentList[0]);
     // Create a C style vector since execve() doesn't understand C++ style strings
@@ -60,40 +60,49 @@ int simpleCommand::execute(char **environ) {
     // Which is almost exactly what execve() expects (char *argv[])
     cStyleArgs.push_back(nullptr);
 
-    // Start the child process by calling fork()
-    pid_t pid = fork();
+    if (shouldFork) {
+        // Start the child process by calling fork()
+        pid_t pid = fork();
 
-    // If fork() failed, print an error and return -1 to the shell
-    if (pid == -1) {
-        perror("Fork failed");
-        return -1;
-    }
-    
-    // fork() returns 0 to the child process
-    if (!pid) {
-        // Call execve(), cStyleArgs.data() turns vector<char *> argv to char *argv[]
-        execve(cStyleArgs[0], cStyleArgs.data(), environ);
+        // If fork() failed, print an error and return -1 to the shell
+        if (pid == -1) {
+            perror("Fork failed");
+            return -1;
+        }
         
-        // execve() never returns, if we reach this line, execve() must've failed
-        // This process must be killed to prevent to shells from running at the same time
+        // fork() returns 0 to the child process
+        if (!pid) {
+            // Call execve(), cStyleArgs.data() turns vector<char *> argv to char *argv[]
+            execve(cStyleArgs[0], cStyleArgs.data(), environ);
+            
+            // execve() never returns, if we reach this line, execve() must've failed
+            // This process must be killed to prevent to shells from running at the same time
+            perror("Execve Failed");
+            exit(EXIT_FAILURE);
+        }
+
+        // fork() returns the child's PID to the parent
+        else {
+            int status;
+            // Pause the current process until the child process finishes to avoid having them both run at the same time
+            waitpid(pid, &status, 0);
+            // If the child process exited naturally, return the status code to the shell
+            if (WIFEXITED(status)) {
+                return WEXITSTATUS(status);
+            }
+            // If not, return -1 to signify it to the shell
+            else {
+                return -1;
+            }
+        }
+    }
+    else {
+        execve(cStyleArgs[0], cStyleArgs.data(), environ);
+
         perror("Execve Failed");
         exit(EXIT_FAILURE);
     }
-
-    // fork() returns the child's PID to the parent
-    else {
-        int status;
-        // Pause the current process until the child process finishes to avoid having them both run at the same time
-        waitpid(pid, &status, 0);
-        // If the child process exited naturally, return the status code to the shell
-        if (WIFEXITED(status)) {
-            return WEXITSTATUS(status);
-        }
-        // If not, return -1 to signify it to the shell
-        else {
-            return -1;
-        }
-    }
+    return -1;
 }
 
 /*----------------andCommand Class-------------------------------*/
@@ -106,14 +115,104 @@ andCommand::andCommand(std::unique_ptr<Command> leftCommand, std::unique_ptr<Com
  * Makes use of the power of both unique_ptr and the polymorphic execute function
  * execute can trigger twice or more depending on the children, what matters is that the execute function is smart enough to tell
  */
-int andCommand::execute(char **environPtr) {
+int andCommand::execute(char **environPtr, bool shouldFork) {
     // Store the status of the first child execution
-    int status = this->leftChild->execute(environPtr);
+    int status = this->leftChild->execute(environPtr, true);
 
     // Execute the right child only if the left has succeded
     if (status == 0)
-        status = this->rightChild->execute(environPtr);
+        status = this->rightChild->execute(environPtr, true);
     
     // Will return the second child's status if both have executed, if the first child failed, it will return its status instead
     return status;
+}
+
+/*----------------andCommand Class-------------------------------*/
+pipeCommand::pipeCommand(std::unique_ptr<Command> leftCommand, std::unique_ptr<Command> rightCommand)
+    : leftChild(std::move(leftCommand)), rightChild(std::move(rightCommand)) {
+
+}
+
+
+/*
+ * pipeCommand execute function
+ * The harderst one to implement, we have to redirect the standard output of the left child to the standard input of the right child
+ * we will make use of pipe() to create a pipe, and dup2() to redirect input and output
+ * We have to be careful since we will be forking twice, and we have to keep track of the status of each child to avoid zombies or pipe leaks
+ */
+int pipeCommand::execute(char **environPtr, bool shouldFork) {
+    // Create a new pipe that we will use to redirect output from the right child to the left one
+    int newPipe[2];
+
+    // Use pipe() to create a new pipe, newPipe[0] is where the right child will read from, newPipe[1] is where the left child will write to
+    if (pipe(newPipe) == -1) {
+        perror("Pipe Creation Failed");
+        return -1;
+    }
+
+    // Start by forking and creating the left child process
+    pid_t leftProc = fork();
+
+    if (leftProc == -1) {
+        perror("Fork Failure");
+        return -1;
+    }
+
+    // If this is the left child
+    if (leftProc == 0) {
+
+        // dup2() basically renames/overwrites the standard output of te left child to use the pipe we created
+        // But because we have two ends to write to (the overwritten STDOUT, and newPipe[1]) we close newPipe[1]
+        // It's not an arbitrary choice, the left child knows only to write to STDOUT, so we trick it by overwriting STDOUT
+        dup2(newPipe[1], STDOUT_FILENO);
+        close(newPipe[0]);
+        close(newPipe[1]);
+        
+        
+        // When we call execute on the right child, and if its a simple command for example
+        // Its execute function will fork again, the resulting child will never return if successful
+        // But this child will return, because it's the parent process relative to the execute call()
+        exit(this->leftChild->execute(environPtr, false));
+    }
+    
+    // Back to the parent, we fork again to create the right child process
+    pid_t rightProc = fork();
+
+    if (rightProc == -1) {
+        perror("Fork Failure");
+        return -1;
+    }
+    
+    // If this is the right child
+    if (rightProc == 0) {
+
+        // dup2() basically renames/overwrites the standard input of te right child to use the pipe we created
+        // But because we have two ends to read from (the overwritten STDIN, and newPipe[0]) we close newPipe[0]
+        // It's not an arbitrary choice, the right child knows only to write to STDIN, so we trick it by overwriting STDIN
+        dup2(newPipe[0], STDIN_FILENO);
+        close(newPipe[0]);
+        close(newPipe[1]);
+        
+        exit(this->rightChild->execute(environPtr, false));
+    }
+
+    // Back to the parent child again
+    int leftStatus, rightStatus;
+
+    // Crucial, we must close the pipes here or the right child will be waiting forever for input coming from the left child process
+    close(newPipe[0]);
+    close(newPipe[1]);
+
+    // Wait for both children to finish to avoid creating two shells / or three
+    waitpid(leftProc, &leftStatus, 0);
+    waitpid(rightProc, &rightStatus, 0);
+    
+    // If the right status has exited succesfully, return the status, which will be 0 after conversion
+    if (WIFEXITED(rightStatus)) {
+        return WEXITSTATUS(rightStatus);
+    }
+    // Else, return -1
+    else {
+        return -1;
+    }
 }
