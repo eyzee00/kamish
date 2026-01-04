@@ -25,26 +25,60 @@ void Shell::run() {
             continue;
 
         int status = currentCommand->execute(this->environ);
-        std::cout << "Last process exited with status code: " << status << std::endl;
     }
 }
-
 std::vector<std::string> Shell::tokenize(const std::string &input) {
-    std::vector<std::string> tokenList;
+    std::vector<std::string> tokens;
+    std::string currentToken;
+    
+    bool inQuotes = false;
+    char quoteChar = 0;
 
-    // Create a string stream from the given input, now we have a custom cin to read from
-    std::stringstream inputStream(input);
-    std::string currentWord;
 
-    // This is the interesting part, C++ does some magic behind the scenes and returns true if reading succeeds, false otherwise
-    // Apparently 'operator bool()' handles how the stringstream object behaves inside a while of if statement
-    // Which keeps this code simpler, we can just read, put the result in a vector, and stop when it's time to stop
-    while (inputStream >> currentWord) {
-        tokenList.push_back(currentWord);
+    for (size_t i = 0; i < input.length(); i++) {
+        char c = input[i];
+
+
+        if (inQuotes) {
+            // STATE: INSIDE QUOTES
+
+            if (c == quoteChar) {
+                // Found the closing quote. Switch back to Normal.
+                inQuotes = false;
+                // Note: We do NOT add 'c' to currentToken. This effectively strips the quote!
+            } else {
+                // Inside quotes, spaces are just text.
+                currentToken += c;
+            }
+        } 
+        else {
+            // STATE: NORMAL (OUTSIDE QUOTES)
+            if (c == '"' || c == '\'') {
+                // Found an opening quote. Switch to Quote Mode.
+                inQuotes = true;
+                quoteChar = c;
+            } 
+            else if (std::isspace(c)) {
+                // Found a space outside quotes. This ends the token.
+                if (!currentToken.empty()) {
+                    tokens.push_back(currentToken);
+                    currentToken.clear();
+                }
+            } 
+            else {
+                // Just a normal letter/number
+                currentToken += c;
+            }
+        }
     }
 
-    return tokenList;
-} 
+    // Push the final token (if the string didn't end with a space)
+    if (!currentToken.empty()) {
+        tokens.push_back(currentToken);
+    }
+
+    return tokens;
+}
 
 /*
  * trimInput - trims leading and trailing spaces from the given input
@@ -71,8 +105,6 @@ std::string Shell::trimInput(const std::string &input) {
  * It's a recursive descent parser, divides and conquers, like all the great leaders
  * How it works: It creates an Abstract Syntax Tree from the given input
  * It starts by finding the root, the root can be any command connector, and divides the string into two
- * The left child: which is guaranteed to be a simple command
- * The right child: which is what is right of the connector, it can be a simple command, or series of connected commands
  * It recursively calls itself on both children until it hits the base case, when it does, it is guaranteed to be a lone simple command
  * Then, we build the command from its arguments
  */
@@ -111,6 +143,31 @@ std::unique_ptr<Command> Shell::commandParser(std::string input) {
         // Wrap the created object by a generic command unique pointer to delegate memory management
         // And also makes use of the abstract Command class, makes working with different types of commands extremely easier
         std::unique_ptr<Command> genericCmdPtr(rawAndPtr);
+        
+        return genericCmdPtr;
+    }
+
+    // If we find "|", this means we have a composite command on our hands
+    size_t pipePos = trimmedInput.find("|");
+    if (pipePos != std::string::npos) {
+        // We divide the input into left of the "|" and the right of it using substr() and andPos
+        std::string leftString = trimmedInput.substr(0, pipePos);
+        std::string rightString = trimmedInput.substr(pipePos + 1);
+
+        // We call the function recursively on the left and right children
+        // This is the part where each individual command is built, each call keeps dividing the input into two
+        // Until we are left with and elementary command
+        std::unique_ptr<Command> leftCommand = commandParser(leftString);
+        std::unique_ptr<Command> rightCommand = commandParser(rightString);
+
+        // Allocate memory on the heap for a pipeCommand object, use move semantics to move ownership from the left/rightCommand to the constructor
+        // The constructor in turn moves the ownership from itself to the instance private members
+        pipeCommand *rawPipePtr = new pipeCommand(std::move(leftCommand), std::move(rightCommand));
+
+        // Wrap the created object by a generic command unique pointer to delegate memory management
+        // And also makes use of the abstract Command class, makes working with different types of commands extremely easier
+        std::unique_ptr<Command> genericCmdPtr(rawPipePtr);
+
         return genericCmdPtr;
     }
     else {
